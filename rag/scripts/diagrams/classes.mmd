@@ -1,0 +1,68 @@
+%% classes.mmd
+%% Class wiring across the guard layer and the existing retrieval/gen layers.
+
+classDiagram
+    class Settings {
+        +guard_model: str
+        +guard_enabled: bool
+        +embed_model: str
+        +gen_model: str
+        +judge_model: str
+        +rerank_model: str
+        +db_url: str
+    }
+
+    class LlamaGuard3 {
+        +model: str
+        -_client: callable
+        +decide(query) GuardDecision
+        -_call_ollama(query) ChatResponse
+        -_parse_response(resp) GuardDecision
+        +DEFAULT_REFUSAL: str
+        +LLAMA_GUARD3_SYSTEM_PROMPT: str
+        +CATEGORY_NAMES: dict
+    }
+
+    class GuardDecision {
+        +action: str
+        +reason: str
+        +refusal: str?
+        +is_terminate: bool
+        +is_safe: bool
+    }
+
+    class PipelineTerminated {
+        +query: str
+        +decision: GuardDecision
+    }
+
+    class guard_or_terminate {
+        <<function>>
+        +call(query, guard?) str
+    }
+
+    class HybridRetriever {
+        +retrieve(query, top_k_dense, top_k_sparse, top_k) list
+    }
+
+    class RerankedRetriever {
+        +retrieve(query, ...) tuple
+    }
+
+    class CrossEncoderReranker {
+        +rerank(query, candidates, top_n) list
+    }
+
+    class Generator {
+        +generate(query, contexts) str
+    }
+
+    Settings --> LlamaGuard3 : builds default model name
+    LlamaGuard3 ..> GuardDecision : produces (Plain-text safe/unsafe)
+    guard_or_terminate --> LlamaGuard3 : uses
+    guard_or_terminate ..> PipelineTerminated : raises on 'unsafe'
+    PipelineTerminated --> GuardDecision : carries
+    guard_or_terminate --> HybridRetriever : caller proceeds to, on 'safe'
+    HybridRetriever --> RerankedRetriever : via
+    RerankedRetriever --> CrossEncoderReranker : delegates
+    RerankedRetriever --> Generator : caller feeds top-N

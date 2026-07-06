@@ -1,0 +1,21 @@
+%% guard.mmd
+%% Decision tree for the pre-pipeline guard.
+%% Six ways to terminate. ONE way to continue.
+%% NOTE: Ollama's llama-guard3:1b wrapper rejects the `tools` field,
+%% so the protocol is plain-text classification, not function calls.
+
+flowchart TD
+    Q([Query enters]) --> F{GUARD_ENABLED?}
+    F -- "false" --> PASS[/"return query unchanged<br/>(no Ollama call)"/]
+    F -- "true" --> CFG["system prompt: LLAMA_GUARD3_SYSTEM_PROMPT<br/>(trained classifier format)"]
+    CFG --> OLLAMA[/"POST /api/chat<br/>model=settings.guard_model<br/>(NO tools parameter)"/]
+    OLLAMA --> P{parse first line of content}
+    P -- "first line == 'safe'" --> S[action=Safe<br/>reason=llama-guard3:safe]
+    P -- "first line == 'unsafe' (or anything else)" --> T[action=Unsafe<br/>reason=llama-guard3:unsafe:<codes><br/>refusal from DEFAULT_REFUSAL]
+    P -- "empty / None content" --> T
+    P -- "exception (Ollama down)" --> T
+    S --> AUDIT[/"audit log:<br/>guard_decision action=safe elapsed_ms=..."/]
+    T --> AUDIT2[/"audit log:<br/>guard_decision action=unsafe<br/>reason + query_preview(80) + elapsed_ms"/]
+    T --> RAISE["raise PipelineTerminated(query, decision)"]
+    RAISE --> CATCH["caller renders refusal;<br/>skip embed / pgvector / bm25 / rerank / gen;<br/>Streamlit also suppresses RAGAS button"]
+    AUDIT --> CONT([return original query unchanged])

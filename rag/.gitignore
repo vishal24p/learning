@@ -1,0 +1,61 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# --- Virtualenv ---
+.venv/
+venv/
+env/
+.env.bak
+
+# --- Secrets / private config ---
+.env
+*.pem
+*.key
+
+# --- Corpus + ephemeral data ---
+# The huge Kubernetes website mirror is regenerated from upstream;
+# never commit it. data/ holds scratch eval artifacts.
+website-main/
+data/
+*.csv
+
+# --- Generated artifacts ---
+*.png
+*.log
+*.sqlite
+*.sqlite3
+
+# --- Editor noise ---
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# --- Stray launcher artifact from a previous PowerShell command ---
+"\357\200\272PYTHONPATH"
+
+# --- Ad-hoc one-shot scripts are NOT part of the portfolio pipeline. ---
+# These were experiments during development; the production paths are
+# under scripts/run_*, scripts/setup_*, scripts/reindex_*.
+check_chunks.py
+visualize_chunking.py
+
+# --- Personal writing aids (not portfolio material). ---
+humanizer.md
+writter.md
+
+# --- Infra scripts not relevant outside the author's machine. ---
+scripts/setup_paradedb.py
+
+# --- Eval artifacts with incomplete data (NaN rows). ---
+scripts/ragas_results.jsonl
+
+# --- Stray files from shell mishaps in this repo's working dir. ---
+.venvScriptspython.exe
+*PYTHONPATH

@@ -1,0 +1,16 @@
+%% pipeline.mmd
+%% End-to-end RAG pipeline including the pre-pipeline safety guard.
+%% Render with: mmdc -i pipeline.mmd -o pipeline.png  (or paste to GitHub).
+
+flowchart TD
+    Q([User query]) --> G{GUARD_ENABLED?}
+    G -- "false (env)" --> HYBRID
+    G -- "true" --> GUARD[/"llama-guard3:1b<br/>system prompt -> 'safe' | 'unsafe'<br/>(Ollama wrapper rejects tools)"/]
+    GUARD -- "head(a) == 'safe'" --> AUDIT1[/"audit log:<br/>guard_decision action=safe"/]
+    GUARD -- "head(a) == 'unsafe'" --> REFUSE[/"refusal rendered;<br/>NO embed / NO pg / NO gen;<br/>audit log includes S-code(s)"/]
+    REFUSE --> END1([Pipeline stopped])
+    AUDIT1 --> HYBRID
+    HYBRID["HybridRetriever<br/>dense (pgvector <=>) +<br/>sparse (ParadeDB bm25 @@@)<br/>fused via RRF k=60"] --> RERANK
+    RERANK["CrossEncoderReranker<br/>MiniLM-L-6 cross-encoder<br/>top_n from settings.rerank_top_n"] --> POS
+    POS["filter_positive_chunks<br/>drop score <= 0<br/>(fallback: keep top-1)"] --> GEN
+    GEN["Generator<br/>Ollama LLM (chat)<br/>system + user with [n] labels"] --> OUT([Answer with inline citations])
