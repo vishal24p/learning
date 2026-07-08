@@ -22,17 +22,17 @@ Built on Postgres/ParadeDB + Ollama + sentence-transformers reranker + Streamlit
 
 ### V1 -- RRF -> Rerank -> Generate
 
-![V1 architecture](https://github.com/vishal24p/learning/raw/main/rag/assets/version1.webp)
+![V1 architecture](https://github.com/vishal24p/learning/raw/main/rag/assets/version1-arch.webp)
 
 ### V2 -- Guard added before anything
 
-![V2 architecture](https://github.com/vishal24p/learning/raw/main/rag/assets/version2.webp)
+![V2 architecture](https://github.com/vishal24p/learning/raw/main/rag/assets/version2-arch.webp)
 
 ## Versions
 
 ### V1 -- First week with RAGAS
 
-<img src="https://github.com/vishal24p/learning/raw/main/rag/assets/version1.webp" alt="V1 RAG demo" width="100%">
+<img src="https://github.com/vishal24p/learning/raw/main/rag/assets/version1.gif" alt="V1 RAG demo" width="100%">
 
 > Demo loop: [view version1.gif](https://github.com/vishal24p/learning/blob/main/rag/assets/version1.gif) for the animated version.
 
@@ -56,7 +56,7 @@ The reranker scored that chunk **-0.44**. Negative. It knew something was wrong.
 
 ### V2 -- Re-chunk + positive filter
 
-<img src="https://github.com/vishal24p/learning/raw/main/rag/assets/version2.webp" alt="V2 RAG demo" width="100%">
+<img src="https://github.com/vishal24p/learning/raw/main/rag/assets/version2.gif" alt="V2 RAG demo" width="100%">
 
 > Demo loop: [view version2.gif](https://github.com/vishal24p/learning/blob/main/rag/assets/version2.gif) for the animated version.
 
