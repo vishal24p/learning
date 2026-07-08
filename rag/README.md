@@ -39,7 +39,9 @@ Query -> Llama-Guard3 --safe-> RRF -> Rerank -> Generator -> Answer
 
 ### V1 -- First week with RAGAS
 
-<video src="https://github.com/vishal24p/learning/raw/main/rag/assets/version1.gif" autoplay loop muted playsinline width="100%"></video>
+<img src="https://github.com/vishal24p/learning/raw/main/rag/assets/version1.gif" alt="V1 RAG demo" width="100%">
+
+> GIF preview: [view version1.gif](https://github.com/vishal24p/learning/blob/main/rag/assets/version1.gif) if the image above doesn't render in your Markdown viewer.
 
 **Chunker**: SemanticSplitterNodeParser. Buffer size 2, breakpoint percentile 95. Window was too tight, threshold too strict. On docs where every paragraph is loosely related to the next, the threshold fired almost never. Whole pages stayed glued. Average chunk: **2,813 characters**.
 
@@ -61,7 +63,9 @@ The reranker scored that chunk **-0.44**. Negative. It knew something was wrong.
 
 ### V2 -- Re-chunk + positive filter
 
-<video src="https://github.com/vishal24p/learning/raw/main/rag/assets/version2.gif" controls width="100%"></video>
+<img src="https://github.com/vishal24p/learning/raw/main/rag/assets/version2.gif" alt="V2 RAG demo" width="100%">
+
+> GIF preview: [view version2.gif](https://github.com/vishal24p/learning/blob/main/rag/assets/version2.gif) if the image above doesn't render in your Markdown viewer.
 
 **Fix**: Buffer 5, breakpoint percentile 80. Same corpus, same embed model. Re-indexed into a fresh database. 14,734 chunks. Average **1,045 characters**.
 
