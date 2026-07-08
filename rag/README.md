@@ -39,7 +39,7 @@ Query -> Llama-Guard3 --safe-> RRF -> Rerank -> Generator -> Answer
 
 ### V1 -- First week with RAGAS
 
-<video src="https://github.com/vishal24p/learning/raw/main/rag/assets/version1.mp4" controls width="100%"></video>
+<video src="https://github.com/vishal24p/learning/raw/main/rag/assets/version1.gif" autoplay loop muted playsinline width="100%"></video>
 
 **Chunker**: SemanticSplitterNodeParser. Buffer size 2, breakpoint percentile 95. Window was too tight, threshold too strict. On docs where every paragraph is loosely related to the next, the threshold fired almost never. Whole pages stayed glued. Average chunk: **2,813 characters**.
 
