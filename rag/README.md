@@ -61,7 +61,7 @@ The reranker scored that chunk **-0.44**. Negative. It knew something was wrong.
 
 ### V2 -- Re-chunk + positive filter
 
-<video src="https://github.com/vishal24p/learning/raw/main/rag/assets/version2.mp4" controls width="100%"></video>
+<video src="https://github.com/vishal24p/learning/raw/main/rag/assets/version2.gif" controls width="100%"></video>
 
 **Fix**: Buffer 5, breakpoint percentile 80. Same corpus, same embed model. Re-indexed into a fresh database. 14,734 chunks. Average **1,045 characters**.
 
