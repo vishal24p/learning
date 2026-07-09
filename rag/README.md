@@ -12,7 +12,6 @@ Hybrid (BM25 + pgvector) semantic RAG with a pre-pipeline LLM safety guard. Full
 | Hybrid Fusion | RRF (Reciprocal Rank Fusion, k=60) |
 | Reranker | `cross-encoder/ms-marco-MiniLM-L-6-v2` |
 | Generator | `minimax-m3:cloud` via Ollama |
-| Pre-pipeline Guard | `llama-guard3:1b` (fail-closed, safe/unsafe) |
 | Eval | RAGAS (faithfulness, answer relevancy, context precision) |
 | UI | Streamlit |
 
@@ -21,10 +20,6 @@ Hybrid (BM25 + pgvector) semantic RAG with a pre-pipeline LLM safety guard. Full
 **V1**
 
 ![V1 architecture](https://github.com/vishal24p/learning/raw/main/rag/assets/version1-arch.webp)
-
-**V2**
-
-![V2 architecture](https://github.com/vishal24p/learning/raw/main/rag/assets/version2-arch.webp)
 
 ## Version log
 
@@ -70,9 +65,3 @@ Context Precision 0.333        Context Precision 1.000
 
 Context precision 0.333 → 1.000. Every chunk in the context window is now relevant. Answer relevancy nearly doubles. Faithfulness drops from 1.000 → 0.889 because the model starts going beyond retrieved context when chunks are tight enough to answer from. Worth the trade-off; answers now answer the question.
 
-##
-### V2 -- Pre-pipeline LLM safety guard
-
-A separate small model call (`llama-guard3:1b`) runs **before** any retrieval. Classifies `safe` or `unsafe`. On `unsafe` the pipeline halts: no embedding call, no Postgres query, no generator call, no RAGAS button. The refusal is logged with the Llama Guard category code (S1..S13) for audit.
-
-Guard is gated by `GUARD_ENABLED=true` in `.env`. Flip to `false` and the pipeline runs unguarded, an A/B switch against baseline. Retrieval and generation logic from V1.1 carry over unchanged.
