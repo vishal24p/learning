@@ -12,11 +12,16 @@ Hybrid (BM25 + pgvector) semantic RAG with a pre-pipeline LLM safety guard. Full
 | Hybrid Fusion | RRF (Reciprocal Rank Fusion, k=60) |
 | Reranker | `cross-encoder/ms-marco-MiniLM-L-6-v2` |
 | Generator | `minimax-m3:cloud` via Ollama |
+<<<<<<< HEAD
+=======
+| Pre-pipeline Guard | `llama-guard3:1b` (fail-closed, safe/unsafe) |
+>>>>>>> ef66bb2 (Add .gitignore, sync .env.example, reframe README as V1/V1.1/V2)
 | Eval | RAGAS (faithfulness, answer relevancy, context precision) |
 | UI | Streamlit |
 
 ## Architecture
 
+<<<<<<< HEAD
 **V1**
 
 ![V1 architecture](https://github.com/vishal24p/learning/raw/main/rag/assets/version1-arch.webp)
@@ -31,6 +36,26 @@ Hybrid (BM25 + pgvector) semantic RAG with a pre-pipeline LLM safety guard. Full
 
 Chunker: SemanticSplitterNodeParser, buffer 2, breakpoint percentile 95. Tight window plus strict threshold meant splits almost never fired on docs where paragraphs only loosely related. Whole pages stayed glued. Average chunk size: **2,813 chars**.
 
+=======
+**V1** -- Hybrid retrieval with positive-score rerank filter
+
+![V1 architecture](https://github.com/vishal24p/learning/raw/main/rag/assets/version1-arch.webp)
+
+**V2** -- Guard prepended; only `safe` reaches retrieval
+
+![V2 architecture](https://github.com/vishal24p/learning/raw/main/rag/assets/version2-arch.webp)
+
+## Version log
+
+### V1 -- Hybrid retrieval, oversized chunks
+
+<img src="https://github.com/vishal24p/learning/raw/main/rag/assets/version1.gif" alt="V1 demo" width="100%">
+
+> [version1.gif](https://github.com/vishal24p/learning/blob/main/rag/assets/version1.gif) for the animated loop.
+
+Chunker: SemanticSplitterNodeParser, buffer 2, breakpoint percentile 95. Tight window plus strict threshold meant splits almost never fired on docs where paragraphs only loosely related. Whole pages stayed glued. Average chunk size: **2,813 chars**.
+
+>>>>>>> ef66bb2 (Add .gitignore, sync .env.example, reframe README as V1/V1.1/V2)
 Retrieval: RRF pool of 20 → cross-encoder rerank → top 5 to LLM.
 
 ```
@@ -45,7 +70,10 @@ The reranker scored that chunk **-0.44**. Negative. It knew the chunk was off. S
 
 **Diagnosis**: 2,813-character chunks bury the two sentences that actually answer the question inside twelve other topics. Dense retrieval can't isolate them. The reranker can't fix what the chunker broke.
 
+<<<<<<< HEAD
 ##
+=======
+>>>>>>> ef66bb2 (Add .gitignore, sync .env.example, reframe README as V1/V1.1/V2)
 ### V1.1 -- Re-chunk + positive filter
 
 <img src="https://github.com/vishal24p/learning/raw/main/rag/assets/version2.gif" alt="V2 demo" width="100%">
@@ -65,3 +93,26 @@ Context Precision 0.333        Context Precision 1.000
 
 Context precision 0.333 → 1.000. Every chunk in the context window is now relevant. Answer relevancy nearly doubles. Faithfulness drops from 1.000 → 0.889 because the model starts going beyond retrieved context when chunks are tight enough to answer from. Worth the trade-off; answers now answer the question.
 
+<<<<<<< HEAD
+=======
+### V2 -- Pre-pipeline LLM safety guard
+
+A separate small model call (`llama-guard3:1b`) runs **before** any retrieval. Classifies `safe` or `unsafe`. On `unsafe` the pipeline halts: no embedding call, no Postgres query, no generator call, no RAGAS button. The refusal is logged with the Llama Guard category code (S1..S13) for audit.
+
+Guard is gated by `GUARD_ENABLED=true` in `.env`. Flip to `false` and the pipeline runs unguarded, an A/B switch against baseline. Retrieval and generation logic from V1.1 carry over unchanged.
+
+## Run it
+
+```bash
+ollama pull nomic-embed-text-v2-moe
+ollama pull llama-guard3:1b
+ollama pull minimax-m3:cloud
+
+python scripts/setup_paradedb.py
+python scripts/apply_migration.py
+python scripts/reindex_v2.py
+
+run_ui.cmd
+```
+
+>>>>>>> ef66bb2 (Add .gitignore, sync .env.example, reframe README as V1/V1.1/V2)
