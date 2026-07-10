@@ -1,0 +1,17 @@
+# Repo-root .gitignore.
+#
+# The project sources live under rag/. There's a more detailed
+# rag/.gitignore that handles the Python build artifacts, IDE noise,
+# and corpus-level exclusions. This top-level file exists because
+# the virtualenv was created at the repo root (not inside rag/), and
+# patterns in rag/.gitignore only match files reachable from rag/.
+#
+# Add patterns here when they need to apply above/rag/ (such as the
+# virtualenv that lives one level up from the sources).
+
+# --- Virtualenv created in this directory ---
+.venv/
+
+# --- Stray launcher artifacts from PowerShell mishaps ---
+.venvScriptspython.exe
+*PYTHONPATH
