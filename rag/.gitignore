@@ -46,6 +46,9 @@ Thumbs.db
 check_chunks.py
 visualize_chunking.py
 
+# Local corpus reindex helper; keep it on disk but out of GitHub.
+scripts/reindex_v2.py
+
 # --- Personal writing aids (not portfolio material). ---
 humanizer.md
 writter.md

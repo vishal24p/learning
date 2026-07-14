@@ -12,6 +12,9 @@
 # --- Virtualenv created in this directory ---
 .venv/
 
+# --- Local tooling state ---
+.codegraph/
+
 # --- Stray launcher artifacts from PowerShell mishaps ---
 .venvScriptspython.exe
 *PYTHONPATH

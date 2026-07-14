@@ -10,12 +10,12 @@ REM
 REM Pre-reqs (run these once yourself):
 REM   ollama serve                       (already running on port 11434)
 REM   ollama pull llama-guard3:1b        (the pre-pipeline guard model)
-REM   python scripts/setup_paradedb.py   (creates the `rag` Postgres container)
+REM   ParadeDB running on the DB_HOST/DB_PORT from .env
 REM   python scripts/apply_migration.py  (creates extensions + indexes)
-REM   python scripts/reindex_v2.py       (builds chunks_v2 from website-main)
+REM   a populated CHUNKS_TABLE in DB_NAME (local reindex helpers are ignored)
 
 setlocal
 set PYTHONPATH=%~dp0
 cd /d "%~dp0"
-.\.venv\Scripts\python.exe scripts\run_ui.py
+..\.venv\Scripts\python.exe scripts\run_ui.py
 endlocal

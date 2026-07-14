@@ -14,7 +14,9 @@ These are **not** Python packages and **not** installed by `requirements.txt`:
   - `llama-guard3:1b` (pre-pipeline safety guard)
   - the generator model declared in `GEN_MODEL`
 - **ParadeDB** (a Postgres container) reachable on `localhost:56432` with
-  the `rag` (and optionally `rag_v2`) database. See `scripts/setup_paradedb.py`.
+  the `rag` (and optionally `rag_v2`) database. The portable setup is to run
+  the `paradedb/paradedb` Docker image yourself and set the matching `DB_*`
+  values in `.env`.
 
 Everything below this line is pip-installable into a virtualenv.
 
@@ -106,7 +108,7 @@ Pulled in for running `pytest tests/`:
 These are lower bounds, not exact pins:
 
 ```
-python>=3.10
+python>=3.11
 ollama>=0.3
 llama-index-core>=0.12
 llama-index-llms-ollama>=0.3

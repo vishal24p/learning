@@ -2,8 +2,6 @@
 
 Hybrid (BM25 + pgvector) semantic RAG with a pre-pipeline LLM safety guard. Fully local: Postgres/ParadeDB + Ollama + sentence-transformers reranker + Streamlit. No API keys.
 
-> Deeper, code-level documentation (architecture, data model, operations, testing): see [`openwiki/`](openwiki/quickstart.md).
-
 ## Stack
 
 | Layer | Tool |
@@ -86,38 +84,43 @@ Guard is gated by `GUARD_ENABLED=true` in `.env`. Flip to `false` and the pipeli
 ### Prerequisites
 
 - **Python 3.11+** in a virtualenv (`python -m venv .venv`).
-  - No dependency manifest is committed; install the packages the code imports
-    (`ollama`-py, `psycopg`, `llama-index`, `sentence-transformers`, `ragas`,
-    `streamlit`, `langchain-ollama`). See [`openwiki/operations.md`](openwiki/operations.md).
+  - Install Python packages with `pip install -r requirements.txt`. See
+    [`requirements.md`](requirements.md) for the package inventory and
+    non-Python prerequisites.
 - **Ollama** running on `http://localhost:11434`, with these models pulled:
   - `ollama pull nomic-embed-text-v2-moe` (embeddings)
   - `ollama pull llama-guard3:1b` (pre-pipeline guard)
   - `ollama pull minimax-m3:cloud` (generator)
   - `ollama pull gemma4:e2b` (RAGAS judge; only needed for evaluation)
 - **ParadeDB** (Postgres with the `vector` and `pg_search` extensions), listening
-  on the port set in `.env` (default `56432`). This repo ships no container
-  launcher script in git, so stand up ParadeDB yourself (Docker image
-  `paradedb/paradedb`) and ensure the extensions are available.
+  on the port set in `.env` (default `56432`). Stand up ParadeDB yourself
+  (Docker image `paradedb/paradedb`) and ensure the extensions are available.
 - **Corpus**: the Kubernetes docs mirror under `website-main/content/en/docs`.
-  This directory is gitignored (regenerated from upstream); clone the
-  `kubernetes/website` repo there, or point `scripts/reindex_v2.py --corpus` at
-  your own markdown tree.
+  This directory is gitignored and regenerated from upstream; clone the
+  `kubernetes/website` repo there before reindexing.
 - **`.env`**: copy `.env.example` to `.env` and set `DB_PASSWORD` (and adjust
   `DB_*` / model names as needed). `.env` is gitignored.
 
 ### Setup & launch
 
 ```bash
-# 1. Create + migrate the schema (extensions, chunks table, BM25 + HNSW indexes).
+# 0. Install Python dependencies.
+pip install -r requirements.txt
+
+# 1. Create + migrate the schema from the committed migration.
 python scripts/apply_migration.py
 
-# 2. Build chunks_v2 from the corpus (creates rag_v2 DB if missing).
-python scripts/reindex_v2.py
+# 2. Populate the configured chunks table from your corpus.
+#    Some local checkouts include an ignored reindex helper; use it only if present.
 
 # 3. Open the Streamlit UI (sets PYTHONPATH, launches http://localhost:8501).
 run_ui.cmd          # Windows
 #   or: python scripts/run_ui.py
 ```
+
+By default `.env.example` points at the committed schema (`DB_NAME=rag`,
+`CHUNKS_TABLE=chunks`). If you keep a local-only v2 reindex helper, it can target
+`rag_v2` / `chunks_v2`; set `.env` to those names after that local table exists.
 
 CLI smoke tests (no UI) live under `scripts/`: `run_pipeline.py`,
 `run_pipeline_with_rerank.py`, `run_rag.py`. Evaluation: `run_ragas.py`.
