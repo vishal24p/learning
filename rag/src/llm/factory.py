@@ -46,7 +46,22 @@ def build_llm() -> Ollama:
     )
 
 
+@lru_cache(maxsize=1)
+def build_rewrite_llm() -> Ollama:
+    """Build the Ollama LLM client for query rewriting.
+
+    Uses the model declared in ``settings.query_rewrite_model`` so it can
+    be A/B-tested independently of the generator model.
+    """
+    return Ollama(
+        model=settings.query_rewrite_model,
+        base_url=settings.ollama_base_url,
+        thinking=False,
+    )
+
+
 def reset_cache() -> None:
     """Useful in tests."""
     build_embed_model.cache_clear()
     build_llm.cache_clear()
+    build_rewrite_llm.cache_clear()

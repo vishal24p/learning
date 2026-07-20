@@ -91,7 +91,7 @@ Guard is gated by `GUARD_ENABLED=true` in `.env`. Flip to `false` and the pipeli
   - `ollama pull nomic-embed-text-v2-moe` (embeddings)
   - `ollama pull llama-guard3:1b` (pre-pipeline guard)
   - `ollama pull minimax-m3:cloud` (generator)
-  - `ollama pull gemma4:e2b` (RAGAS judge; only needed for evaluation)
+  - `ollama pull glm-4.7:cloud` (RAGAS judge; only needed for evaluation)
 - **ParadeDB** (Postgres with the `vector` and `pg_search` extensions), listening
   on the port set in `.env` (default `56432`). Stand up ParadeDB yourself
   (Docker image `paradedb/paradedb`) and ensure the extensions are available.

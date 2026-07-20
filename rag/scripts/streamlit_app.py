@@ -29,9 +29,11 @@ import streamlit as st
 
 from src.config import settings  # noqa: E402
 from src.generation.generator import Generator  # noqa: E402
+from src.generation.prompts import QA_TEMPLATE, SYSTEM_PROMPT, format_context  # noqa: E402
 from src.guard.pipeline import guard_or_terminate  # noqa: E402
 from src.guard.reason import PipelineTerminated  # noqa: E402
 from src.logging_setup import setup_logging  # noqa: E402
+from src.query_rewrite import REWRITE_SYSTEM_PROMPT, rewrite_query  # noqa: E402
 from src.retrieval.hybrid_retriever import HybridRetriever  # noqa: E402
 from src.retrieval.reranked_retriever import RerankedRetriever  # noqa: E402
 from src.retrieval.reranker import filter_positive_chunks  # noqa: E402
@@ -114,17 +116,88 @@ def load_components() -> tuple[HybridRetriever, RerankedRetriever, Generator]:
     return hybrid, reranked, generator
 
 
+def _chunk_preview(content: str, limit: int = 280) -> str:
+    preview = content.replace("\n", " ").strip()
+    if len(preview) <= limit:
+        return preview
+    return f"{preview[:limit]}..."
+
+
 def render_chunks(name: str, hits: list[dict]) -> None:
     if not hits:
         st.write(f"_{name}_: no results")
         return
     for i, h in enumerate(hits, 1):
-        preview = h["content"].replace("\n", " ")[:280]
+        content = h.get("content", "")
+        chunk_id = h.get("chunk_id", "<missing>")
+        score = h.get("score")
+        score_text = f"{score:.4f}" if isinstance(score, (int, float)) else str(score)
+        with st.expander(
+            f"[{i}] id={chunk_id} score={score_text} - {_chunk_preview(content, 110)}",
+            expanded=False,
+        ):
+            st.markdown(
+                f"**rank:** `{i}`  \n"
+                f"**chunk_id:** `{chunk_id}`  \n"
+                f"**score:** `{score_text}`"
+            )
+            st.code(content, language="text")
+
+
+def _render_generator_inspection(
+    query: str,
+    fed_chunks: list[dict],
+    answer: str,
+) -> None:
+    context_block = format_context(fed_chunks)
+    user_prompt = QA_TEMPLATE.format(context=context_block, query=query)
+
+    with st.expander("Generator inspection", expanded=False):
         st.markdown(
-            f"**[{i}] id={h['chunk_id']}  score={h['score']:.4f}**  \n"
-            f"<span style='color:#888'>{preview}...</span>",
-            unsafe_allow_html=True,
+            f"**generator model:** `{settings.gen_model}`  \n"
+            f"**fed chunks:** `{len(fed_chunks)}`"
         )
+        with st.expander("SYSTEM_PROMPT", expanded=False):
+            st.code(SYSTEM_PROMPT, language="text")
+        with st.expander("Rendered user prompt", expanded=False):
+            st.code(user_prompt, language="text")
+        with st.expander("Generated answer/output", expanded=False):
+            st.code(answer, language="text")
+
+
+def _render_query_rewrite_inspection(
+    query: str,
+    rewritten_query: str | None,
+) -> None:
+    rewritten = rewritten_query or query
+    with st.expander("Query rewrite inspection", expanded=False):
+        st.markdown(
+            f"**enabled:** `{settings.query_rewrite_enabled}`  \n"
+            f"**rewrite model:** `{settings.query_rewrite_model}`"
+        )
+        with st.expander("REWRITE_SYSTEM_PROMPT", expanded=False):
+            st.code(REWRITE_SYSTEM_PROMPT, language="text")
+        st.markdown("**Original user query**")
+        st.code(query, language="text")
+        st.markdown("**Rewritten retrieval query**")
+        st.code(rewritten, language="text")
+
+
+def _ragas_input_bundle(
+    query: str,
+    contexts: list[str],
+    answer: str,
+) -> dict:
+    return {
+        "user_input": query,
+        "response": answer,
+        "retrieved_contexts": contexts,
+        "reference": "",
+        "reference_contexts": [],
+        "judge_model": settings.judge_model,
+        "embedding_model": settings.embed_model,
+        "metrics": ["faithfulness", "answer_relevancy", "context_precision"],
+    }
 
 
 def extract_used_citations(answer: str) -> list[int]:
@@ -154,6 +227,10 @@ def main() -> None:
             ("model", settings.gen_model),
             ("temp", str(settings.gen_temperature)),
             ("max tokens", str(settings.gen_max_tokens)),
+            ("Query rewrite", "on" if settings.query_rewrite_enabled else "off"),
+            ("Query rewrite model", settings.query_rewrite_model),
+            ("Guard", "on" if settings.guard_enabled else "off"),
+            ("Guard model", settings.guard_model),
         ]
         st.table({k: v for k, v in cfg_pairs})
 
@@ -171,7 +248,7 @@ def main() -> None:
         # On terminate, we render the refusal inline and NOT cache
         # anything to session_state, so the RAGAS button never has
         # a "last_answer" to score against.
-        status = st.status("Running guard…", expanded=True)
+        status = st.status("Running guard...", expanded=True)
         live_log = st.empty()
 
         def do_guard() -> str:
@@ -195,25 +272,38 @@ def main() -> None:
             st.caption(f"Audit reason: `{exc.decision.reason}`")
             return
 
-        status.update(label="Retrieving…", expanded=True)
+        # Single-query rewrite for retrieval. Runs after guard => safe,
+        # before retrieval. Returns one rewritten query. Original query
+        # is preserved for the Generator and the answer display.
+        def do_rewrite() -> str:
+            return rewrite_query(query)
+
+        status.update(label="Rewriting query...", state="running")
+        live_log_rw = st.empty()
+        original_query = query
+        rewritten_query, rw_logs = collect_logs_with_status(
+            do_rewrite, None, live_log_rw, prefix="Rewrite "
+        )
+
+        status.update(label="Retrieving...", expanded=True)
         live_log = st.empty()
 
         hybrid, reranked, generator = load_components()
-        st.markdown("---")
-        st.markdown(f"**You:** {query}")
 
         log_chunks: list[str] = []
         log_chunks.append("--- guard: safe_to_continue ---")
+        log_chunks.extend(rw_logs)
 
         def do_retrieve() -> tuple[list, list]:
+            # Retrieval uses the rewritten query for better recall.
             rrf_pool = hybrid.retrieve(
-                query,
+                rewritten_query,
                 top_k_dense=10,
                 top_k_sparse=10,
                 top_k=settings.rerank_candidates,
             )
             _, top5 = reranked.retrieve(
-                query,
+                rewritten_query,
                 top_k_dense=10,
                 top_k_sparse=10,
                 candidates=settings.rerank_candidates,
@@ -226,7 +316,7 @@ def main() -> None:
         )
         log_chunks.extend(recv_logs)
 
-        status.update(label="Generating answer…", state="running")
+        status.update(label="Generating answer...", state="running")
         # Only feed chunks the reranker is *positive* about. If all five
         # were non-positive, fall back to the single top-ranked chunk so the
         # LLM has something to ground on instead of refusing silently.
@@ -234,19 +324,21 @@ def main() -> None:
         if fed_chunks and len(fed_chunks) < len(top5):
             status.update(
                 label=(
-                    f"Generating answer… (filtered: {len(fed_chunks)}/{len(top5)} positive)"
+                    f"Generating answer... (filtered: {len(fed_chunks)}/{len(top5)} positive)"
                 ),
                 state="running",
             )
+        # Generator answers the user's *original* query, not the rewritten one.
         answer, recv_logs = collect_logs_with_status(
-            lambda: generator.generate(query, fed_chunks),
+            lambda: generator.generate(original_query, fed_chunks),
             None, live_log, prefix="Generation ",
         )
         log_chunks.extend(recv_logs)
         status.update(label="Answer ready", state="complete")
 
         # Persist last run so it survives the rerun that follows any RAGAS click.
-        st.session_state["last_query"] = query
+        st.session_state["last_query"] = original_query
+        st.session_state["last_rewritten_query"] = rewritten_query
         st.session_state["last_top5"] = top5
         st.session_state["last_fed_chunks"] = fed_chunks
         st.session_state["last_answer"] = answer
@@ -266,6 +358,7 @@ def _read_last_result() -> dict | None:
         return None
     return {
         "query": st.session_state["last_query"],
+        "rewritten_query": st.session_state.get("last_rewritten_query"),
         "top5": st.session_state["last_top5"],
         "fed_chunks": st.session_state.get("last_fed_chunks", st.session_state["last_top5"]),
         "rrf_pool": st.session_state["last_rrf_pool"],
@@ -274,15 +367,20 @@ def _read_last_result() -> dict | None:
     }
 
 
-def _render_last_result(query: str, top5: list[dict], fed_chunks: list[dict],
+def _render_last_result(query: str, rewritten_query: str | None,
+                        top5: list[dict], fed_chunks: list[dict],
                         rrf_pool: list[dict], answer: str,
                         log_chunks: list[str]) -> None:
     """Render a cached query result. Reusable on every rerun."""
     st.markdown("---")
     st.markdown(f"**You:** {query}")
+    if rewritten_query and rewritten_query != query:
+        st.caption(f"rewritten for retrieval: {rewritten_query}")
 
     st.markdown("**Answer:**")
     st.write(answer)
+    _render_query_rewrite_inspection(query, rewritten_query)
+    _render_generator_inspection(query, fed_chunks, answer)
 
     used = extract_used_citations(answer)
     if used:
@@ -296,21 +394,23 @@ def _render_last_result(query: str, top5: list[dict], fed_chunks: list[dict],
                 preview = hit["content"].replace("\n", " ")[:320]
                 st.markdown(
                     f"- **[{n}]** id={hit['chunk_id']} (rerank score "
-                    f"{hit['score']:.4f}) — {preview}..."
+                    f"{hit['score']:.4f}) - {preview}..."
                 )
 
     with st.expander("Retrieval details", expanded=False):
         st.markdown("##### RRF pool (top 20 fused candidates)")
         render_chunks("RRF pool", rrf_pool)
-        st.markdown("##### Reranked (top 5 kept for the LLM)")
+        st.markdown("##### Reranked top 5")
         render_chunks("Reranked", top5)
         dropped = [c for c in top5 if c not in fed_chunks]
         st.markdown(
             f"##### Positive-only fed to LLM: "
             f"**{len(fed_chunks)}/{len(top5)}** kept"
-            + (f" — dropped {len(dropped)} non-positive chunk(s)" if dropped else "")
+            + (f" - dropped {len(dropped)} non-positive chunk(s)" if dropped else "")
         )
         render_chunks("Positive-only", fed_chunks)
+        st.markdown("##### Dropped chunks")
+        render_chunks("Dropped", dropped)
 
     with st.expander("Logs (last run)", expanded=True):
         if log_chunks:
@@ -333,11 +433,19 @@ def _render_ragas_eval_block(query: str, top5: list[dict],
     """
     btn_key = _derive_ragas_button_key(query, top5)
     with st.expander("RAGAS eval (last answer)", expanded=False):
+        answer = st.session_state.get("last_answer", "")
+        contexts = [
+            ch["content"] if isinstance(ch, dict) and "content" in ch else str(ch)
+            for ch in fed_chunks
+        ]
+        input_bundle = _ragas_input_bundle(query, contexts, answer)
         st.caption(
             f"Runs RAGAS metrics on the question above using the "
             f"{len(fed_chunks)} positive-only chunk(s) the LLM actually saw "
-            "as `retrieved_contexts`. Judge = same Ollama model."
+            f"as `retrieved_contexts`. Judge = {settings.judge_model}."
         )
+        with st.expander("RAGAS input bundle", expanded=False):
+            st.json(input_bundle)
         run = st.button("Run RAGAS on this answer", key=btn_key)
         if run:
             with st.spinner("Scoring with RAGAS..."):
@@ -345,21 +453,28 @@ def _render_ragas_eval_block(query: str, top5: list[dict],
                     from src.evaluation.judge import build_judge_llm, build_judge_embeddings
                     from src.evaluation.ragas_runner import score_with_ragas
 
-                    contexts = [
-                        ch["content"] if isinstance(ch, dict) and "content" in ch else str(ch)
-                        for ch in fed_chunks
-                    ]
-                    answer = st.session_state.get("last_answer", "")
-
                     judge = build_judge_llm()
                     emb = build_judge_embeddings()
-                    score = score_with_ragas(query, contexts, answer, judge, emb)
+                    ragas_log_box = st.empty()
+                    score, ragas_logs = collect_logs_with_status(
+                        lambda: score_with_ragas(query, contexts, answer, judge, emb),
+                        None,
+                        ragas_log_box,
+                        prefix="RAGAS ",
+                    )
 
                     mean = score["mean"]
                     cols = st.columns(3)
                     cols[0].metric("faithfulness", f"{mean.get('faithfulness', 0):.3f}")
                     cols[1].metric("answer_relevancy", f"{mean.get('answer_relevancy', 0):.3f}")
                     cols[2].metric("context_precision", f"{mean.get('context_precision', 0):.3f}")
+                    with st.expander("Raw RAGAS scores", expanded=False):
+                        st.json(score.get("scores", {}))
+                    with st.expander("RAGAS logs", expanded=False):
+                        if ragas_logs:
+                            st.code("\n".join(ragas_logs), language="text")
+                        else:
+                            st.write("No log lines emitted during RAGAS scoring.")
                     st.caption("elapsed (not measured for single-row runs)")
                 except Exception as exc:
                     st.error(f"RAGAS run failed: {exc}")

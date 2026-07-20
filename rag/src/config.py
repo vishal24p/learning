@@ -56,10 +56,18 @@ class Settings:
     rerank_candidates: int = _int_env("RERANK_CANDIDATES", 20)
     rerank_top_n: int = _int_env("RERANK_TOP_N", 5)
 
+    # Query rewriting: runs after guard says "safe", before retrieval.
+    # Rewrites the user's single query into a clearer search query.
+    # When disabled, the original query is passed to retrieval unchanged.
+    query_rewrite_enabled: bool = os.getenv("QUERY_REWRITE_ENABLED", "true").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+    query_rewrite_model: str = os.getenv("QUERY_REWRITE_MODEL", "minimax-m3:cloud")
+
     gen_temperature: float = float(os.getenv("GEN_TEMPERATURE", "0.2"))
     gen_max_tokens: int = _int_env("GEN_MAX_TOKENS", 400)
 
-    judge_model: str = os.getenv("JUDGE_MODEL", "gemma4:e2b")
+    judge_model: str = os.getenv("JUDGE_MODEL", "glm-4.7:cloud")
     judge_temperature: float = float(os.getenv("JUDGE_TEMPERATURE", "0.0"))
 
     @property

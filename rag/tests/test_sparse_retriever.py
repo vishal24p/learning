@@ -1,4 +1,4 @@
-"""Unit test: SparseRetriever shapes results uniformly and uses @@@ + score."""
+"""Unit tests for SparseRetriever result shape and BM25 query cleanup."""
 from __future__ import annotations
 
 
@@ -34,12 +34,11 @@ class FakeConn:
         return self.cursor_obj
 
 
-def test_sparse_retriever_returns_uniform_shape_and_uses_pgsearch():
-    rows = [
+def _run_sparse_query(query: str, rows: list[tuple] | None = None):
+    rows = rows or [
         (1, "heading levels explained", 1.42),
         (2, "how to write h2", 0.91),
     ]
-
     captured: dict = {}
 
     def fake_connect(*args, **kwargs):
@@ -56,16 +55,36 @@ def test_sparse_retriever_returns_uniform_shape_and_uses_pgsearch():
     mod.connect = fake_connect
     try:
         retriever = mod.SparseRetriever("postgresql://x")
-        results = retriever.retrieve("heading levels", top_k=2)
+        results = retriever.retrieve(query, top_k=2)
     finally:
         mod.connect = original
+
+    return results, captured["conn"].cursor_obj.executed
+
+
+def test_sparse_retriever_returns_uniform_shape_and_uses_pgsearch():
+    results, executed = _run_sparse_query("heading levels")
 
     assert results == [
         {"chunk_id": 1, "content": "heading levels explained", "score": 1.42},
         {"chunk_id": 2, "content": "how to write h2", "score": 0.91},
     ]
 
-    sql, params = captured["conn"].cursor_obj.executed
+    sql, params = executed
     assert "@@@" in sql
     assert "paradedb.score(id)" in sql
     assert params == ("heading levels", 2)
+
+
+def test_sparse_retriever_strips_bm25_parser_syntax_from_natural_query():
+    _, executed = _run_sparse_query("assistant: What is a Pod in Kubernetes?")
+
+    _, params = executed
+    assert params == ("assistant What is a Pod in Kubernetes", 2)
+
+
+def test_sparse_retriever_preserves_plain_hyphenated_terms():
+    _, executed = _run_sparse_query("kube-proxy pod networking")
+
+    _, params = executed
+    assert params == ("kube-proxy pod networking", 2)

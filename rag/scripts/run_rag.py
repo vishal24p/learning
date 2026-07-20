@@ -20,6 +20,7 @@ from src.generation.generator import Generator  # noqa: E402
 from src.guard.pipeline import guard_or_terminate  # noqa: E402
 from src.guard.reason import PipelineTerminated  # noqa: E402
 from src.logging_setup import setup_logging  # noqa: E402
+from src.query_rewrite import rewrite_query  # noqa: E402
 from src.retrieval.hybrid_retriever import HybridRetriever  # noqa: E402
 from src.retrieval.reranked_retriever import RerankedRetriever  # noqa: E402
 from src.retrieval.reranker import filter_positive_chunks  # noqa: E402
@@ -48,23 +49,31 @@ def show(name: str, hits: list[dict]) -> None:
 
 
 def main() -> int:
-    query = resolve_query(sys.argv) or DEFAULT_QUERY
-    print(f"\n[query] {query}")
+    original_query = resolve_query(sys.argv) or DEFAULT_QUERY
+    print(f"\n[query] {original_query}")
     print(f"[cfg] model={settings.gen_model} temp={settings.gen_temperature} "
           f"max_tokens={settings.gen_max_tokens} "
           f"guard={'on' if settings.guard_enabled else 'off'} "
-          f"guard_model={settings.guard_model}")
+          f"guard_model={settings.guard_model} "
+          f"query_rewrite={'on' if settings.query_rewrite_enabled else 'off'} "
+          f"query_rewrite_model={settings.query_rewrite_model}")
 
     # Pre-pipeline guard. If it terminates, we never embed, never query
     # Postgres, never call the generator. Just print the refusal and quit.
     try:
-        query = guard_or_terminate(query)
+        query = guard_or_terminate(original_query)
     except PipelineTerminated as exc:
         log.warning("pipeline terminated by guard: %s", exc.decision.reason)
         print("\n== GUARD: TERMINATE ==")
         print(f"reason : {exc.decision.reason}")
         print(f"refusal: {exc.decision.refusal}")
         return 0
+
+    # Single-query rewrite for retrieval. Runs after guard => safe,
+    # before hybrid/rerank. Returns one rewritten query, never multiple.
+    query = rewrite_query(query)
+    if query != original_query:
+        print(f"\n[rewrite] {original_query}\n     -> {query}")
 
     hybrid = HybridRetriever(settings.db_url)
     rr = RerankedRetriever(settings.db_url)
@@ -95,7 +104,9 @@ def main() -> int:
     filtered = filter_positive_chunks(reranked, fallback_top_n=1)
     show("RERANKED -> POSITIVE ONLY (fed to LLM)", filtered)
 
-    answer = gen.generate(query, filtered)
+    # Generator answers the user's *original* question, not the rewritten
+    # one. Retrieval used the rewrite for better recall.
+    answer = gen.generate(original_query, filtered)
     print("\n== ANSWER ==")
     print(answer)
     log.info("done")
