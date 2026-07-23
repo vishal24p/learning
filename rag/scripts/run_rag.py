@@ -23,7 +23,6 @@ from src.logging_setup import setup_logging  # noqa: E402
 from src.query_rewrite import rewrite_query  # noqa: E402
 from src.retrieval.hybrid_retriever import HybridRetriever  # noqa: E402
 from src.retrieval.reranked_retriever import RerankedRetriever  # noqa: E402
-from src.retrieval.reranker import filter_positive_chunks  # noqa: E402
 
 setup_logging()
 log = logging.getLogger("run_rag")
@@ -98,15 +97,9 @@ def main() -> int:
     show("RRF (top 5)", rrf_again[: settings.rerank_top_n])
     show("RERANKED (final top 5)", reranked)
 
-    # Only feed chunks the reranker is *positive* about. If all five were
-    # non-positive, we still answer with the single best-ranked chunk so the
-    # LLM has something to ground on instead of refusing silently.
-    filtered = filter_positive_chunks(reranked, fallback_top_n=1)
-    show("RERANKED -> POSITIVE ONLY (fed to LLM)", filtered)
-
     # Generator answers the user's *original* question, not the rewritten
     # one. Retrieval used the rewrite for better recall.
-    answer = gen.generate(original_query, filtered)
+    answer = gen.generate(original_query, reranked)
     print("\n== ANSWER ==")
     print(answer)
     log.info("done")

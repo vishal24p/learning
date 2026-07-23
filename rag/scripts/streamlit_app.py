@@ -36,7 +36,6 @@ from src.logging_setup import setup_logging  # noqa: E402
 from src.query_rewrite import REWRITE_SYSTEM_PROMPT, rewrite_query  # noqa: E402
 from src.retrieval.hybrid_retriever import HybridRetriever  # noqa: E402
 from src.retrieval.reranked_retriever import RerankedRetriever  # noqa: E402
-from src.retrieval.reranker import filter_positive_chunks  # noqa: E402
 from src.ui.keys import derive_ragas_button_key as _derive_ragas_button_key
 
 setup_logging()
@@ -317,20 +316,9 @@ def main() -> None:
         log_chunks.extend(recv_logs)
 
         status.update(label="Generating answer...", state="running")
-        # Only feed chunks the reranker is *positive* about. If all five
-        # were non-positive, fall back to the single top-ranked chunk so the
-        # LLM has something to ground on instead of refusing silently.
-        fed_chunks = filter_positive_chunks(top5, fallback_top_n=1)
-        if fed_chunks and len(fed_chunks) < len(top5):
-            status.update(
-                label=(
-                    f"Generating answer... (filtered: {len(fed_chunks)}/{len(top5)} positive)"
-                ),
-                state="running",
-            )
         # Generator answers the user's *original* query, not the rewritten one.
         answer, recv_logs = collect_logs_with_status(
-            lambda: generator.generate(original_query, fed_chunks),
+            lambda: generator.generate(original_query, top5),
             None, live_log, prefix="Generation ",
         )
         log_chunks.extend(recv_logs)
@@ -340,7 +328,6 @@ def main() -> None:
         st.session_state["last_query"] = original_query
         st.session_state["last_rewritten_query"] = rewritten_query
         st.session_state["last_top5"] = top5
-        st.session_state["last_fed_chunks"] = fed_chunks
         st.session_state["last_answer"] = answer
         st.session_state["last_rrf_pool"] = rrf_pool
         st.session_state["last_log_chunks"] = log_chunks
@@ -349,7 +336,7 @@ def main() -> None:
     last = _read_last_result()
     if last:
         _render_last_result(**last)
-        _render_ragas_eval_block(last["query"], last["top5"], last["fed_chunks"])
+        _render_ragas_eval_block(last["query"], last["top5"])
 
 
 def _read_last_result() -> dict | None:
@@ -360,7 +347,6 @@ def _read_last_result() -> dict | None:
         "query": st.session_state["last_query"],
         "rewritten_query": st.session_state.get("last_rewritten_query"),
         "top5": st.session_state["last_top5"],
-        "fed_chunks": st.session_state.get("last_fed_chunks", st.session_state["last_top5"]),
         "rrf_pool": st.session_state["last_rrf_pool"],
         "answer": st.session_state["last_answer"],
         "log_chunks": st.session_state["last_log_chunks"],
@@ -368,7 +354,7 @@ def _read_last_result() -> dict | None:
 
 
 def _render_last_result(query: str, rewritten_query: str | None,
-                        top5: list[dict], fed_chunks: list[dict],
+                        top5: list[dict],
                         rrf_pool: list[dict], answer: str,
                         log_chunks: list[str]) -> None:
     """Render a cached query result. Reusable on every rerun."""
@@ -380,16 +366,14 @@ def _render_last_result(query: str, rewritten_query: str | None,
     st.markdown("**Answer:**")
     st.write(answer)
     _render_query_rewrite_inspection(query, rewritten_query)
-    _render_generator_inspection(query, fed_chunks, answer)
+    _render_generator_inspection(query, top5, answer)
 
     used = extract_used_citations(answer)
     if used:
         st.markdown("---")
         st.markdown(f"**Citations ({len(used)}):**")
         for n in used:
-            hit = fed_chunks[n - 1] if 1 <= n <= len(fed_chunks) else (
-                top5[n - 1] if 1 <= n <= len(top5) else None
-            )
+            hit = top5[n - 1] if 1 <= n <= len(top5) else None
             if hit:
                 preview = hit["content"].replace("\n", " ")[:320]
                 st.markdown(
@@ -402,15 +386,6 @@ def _render_last_result(query: str, rewritten_query: str | None,
         render_chunks("RRF pool", rrf_pool)
         st.markdown("##### Reranked top 5")
         render_chunks("Reranked", top5)
-        dropped = [c for c in top5 if c not in fed_chunks]
-        st.markdown(
-            f"##### Positive-only fed to LLM: "
-            f"**{len(fed_chunks)}/{len(top5)}** kept"
-            + (f" - dropped {len(dropped)} non-positive chunk(s)" if dropped else "")
-        )
-        render_chunks("Positive-only", fed_chunks)
-        st.markdown("##### Dropped chunks")
-        render_chunks("Dropped", dropped)
 
     with st.expander("Logs (last run)", expanded=True):
         if log_chunks:
@@ -419,29 +394,26 @@ def _render_last_result(query: str, rewritten_query: str | None,
             st.write("No log lines emitted for this query.")
 
 
-def _render_ragas_eval_block(query: str, top5: list[dict],
-                              fed_chunks: list[dict]) -> None:
+def _render_ragas_eval_block(query: str, top5: list[dict]) -> None:
     """Below the answer: a button that runs RAGAS on the same Q + retrieval.
 
     Faithfulness, answer_relevancy, context_precision. No labelled doc set.
     Passes the (q, contexts, answer) we already produced, so the metric
     measures the answer the user just saw -- no extra pipeline run.
 
-    `fed_chunks` controls which contexts RAGAS scores against -- i.e. the
-    positive-only filtered list that the LLM actually saw, NOT the raw
-    reranked top-5.
+    RAGAS scores the same full reranked top-5 context list that the LLM saw.
     """
     btn_key = _derive_ragas_button_key(query, top5)
     with st.expander("RAGAS eval (last answer)", expanded=False):
         answer = st.session_state.get("last_answer", "")
         contexts = [
             ch["content"] if isinstance(ch, dict) and "content" in ch else str(ch)
-            for ch in fed_chunks
+            for ch in top5
         ]
         input_bundle = _ragas_input_bundle(query, contexts, answer)
         st.caption(
             f"Runs RAGAS metrics on the question above using the "
-            f"{len(fed_chunks)} positive-only chunk(s) the LLM actually saw "
+            f"{len(top5)} reranked chunk(s) the LLM actually saw "
             f"as `retrieved_contexts`. Judge = {settings.judge_model}."
         )
         with st.expander("RAGAS input bundle", expanded=False):

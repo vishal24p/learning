@@ -19,3 +19,25 @@ def test_settings_db_url(monkeypatch):
     importlib.reload(cfg_mod)
     s = cfg_mod.Settings()
     assert s.db_url == "postgresql://rag:secret@localhost:56432/rag"
+
+
+def test_settings_rerank_use_softmax_parses_true_and_false(monkeypatch):
+    import importlib
+    import src.config as cfg_mod
+
+    monkeypatch.setenv("RERANK_USE_SOFTMAX", "true")
+    importlib.reload(cfg_mod)
+    assert cfg_mod.Settings().rerank_use_softmax is True
+
+    monkeypatch.setenv("RERANK_USE_SOFTMAX", "false")
+    importlib.reload(cfg_mod)
+    assert cfg_mod.Settings().rerank_use_softmax is False
+
+
+def test_settings_rerank_use_softmax_defaults_disabled(monkeypatch):
+    import importlib
+    import src.config as cfg_mod
+
+    monkeypatch.delenv("RERANK_USE_SOFTMAX", raising=False)
+    importlib.reload(cfg_mod)
+    assert cfg_mod.Settings().rerank_use_softmax is False

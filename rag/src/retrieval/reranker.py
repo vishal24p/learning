@@ -7,6 +7,7 @@ identity ordering so the pipeline still completes during local debugging.
 from __future__ import annotations
 
 import logging
+import math
 import time
 from typing import Callable
 
@@ -15,61 +16,14 @@ from src.config import settings
 log = logging.getLogger(__name__)
 
 
-def filter_positive_chunks(
-    reranked: list[dict],
-    fallback_top_n: int = 1,
-) -> list[dict]:
-    """Keep only reranked chunks with a strictly positive score.
-
-    The reranker emits a floating "score" per chunk (cross-encoder logits).
-    For generation we only want to pass evidence that the model thinks is
-    actually relevant -- so we drop anything <= 0.
-
-    Fallback: if EVERY chunk scores <= 0, we still want to answer the user
-    instead of silently refusing. In that case we hand the LLM the single
-    top-ranked chunk (the reranker's "best guess", even if weakly negative)
-    so it at least has some context to work with.
-
-    The function is a no-op for the identity-fallback path (no scores) and
-    for empty input: empty -> [].
-
-    Parameters
-    ----------
-    reranked : list[dict]
-        Output of ``CrossEncoderReranker.rerank()``. Each item has keys
-        ``chunk_id``, ``content``, ``score``. Already sorted by score desc.
-    fallback_top_n : int
-        How many chunks to keep when all scores are non-positive.
-        Defaults to 1 (the top chunk only).
-
-    Returns
-    -------
-    list[dict]
-        The filtered (or fallback) chunk list, preserving the original
-        descending-score order.
-    """
-    if not reranked:
+def _softmax(scores: list[float]) -> list[float]:
+    """Return numerically stable softmax probabilities for ``scores``."""
+    if not scores:
         return []
-
-    positive = [c for c in reranked if float(c.get("score", 0.0)) > 0.0]
-    if positive:
-        dropped = len(reranked) - len(positive)
-        if dropped:
-            log.info(
-                "filter_positive_chunks: kept %d positive chunks, dropped %d non-positive",
-                len(positive), dropped,
-            )
-        return positive
-
-    # All chunks non-positive -- use the top-N so the LLM still sees *something*.
-    fallback = reranked[: max(1, fallback_top_n)]
-    top_scores = ", ".join(f"{c['score']:.2f}" for c in fallback)
-    log.warning(
-        "filter_positive_chunks: all %d scores were non-positive; "
-        "falling back to top-%d chunk(s) scores=[%s]",
-        len(reranked), len(fallback), top_scores,
-    )
-    return fallback
+    max_score = max(scores)
+    exponentials = [math.exp(score - max_score) for score in scores]
+    total = sum(exponentials)
+    return [value / total for value in exponentials]
 
 
 class CrossEncoderReranker:
@@ -127,6 +81,10 @@ class CrossEncoderReranker:
             log.info("rerank kept in RRF order (identity fallback) in=%d out=%d",
                      len(candidates), keep)
             return candidates[:keep]
+
+        if settings.rerank_use_softmax:
+            scores = _softmax(scores)
+            log.info("rerank applied softmax score normalization")
 
         scored = [
             {"chunk_id": c["chunk_id"], "content": c["content"], "score": float(s)}

@@ -29,6 +29,13 @@ def _int_env(name: str, default: int) -> int:
         return default
 
 
+def _bool_env(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None or raw == "":
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 @dataclass(frozen=True)
 class Settings:
     db_host: str = os.getenv("DB_HOST", "localhost")
@@ -55,6 +62,7 @@ class Settings:
     rerank_model: str = os.getenv("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
     rerank_candidates: int = _int_env("RERANK_CANDIDATES", 20)
     rerank_top_n: int = _int_env("RERANK_TOP_N", 5)
+    rerank_use_softmax: bool = _bool_env("RERANK_USE_SOFTMAX", False)
 
     # Query rewriting: runs after guard says "safe", before retrieval.
     # Rewrites the user's single query into a clearer search query.
